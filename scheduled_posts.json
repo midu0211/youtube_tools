@@ -1,0 +1,26 @@
+[
+    {
+        "video_path": "D:\\youtube-app\\assets\\videoplayback.mp4",
+        "title": "Video test tự động đăng bài",
+        "description": "Đây là video test đăng bài tự động lên YouTube bằng API.",
+        "scheduled_time": "2024-07-21T12:35:00Z",
+        "status": "uploaded"
+    },
+    {
+        "video_path": "C:/Users/nduc0/Downloads/videoplayback.mp4",
+        "title": "Hello",
+        "description": "My name is Minh Duc",
+        "scheduled_time": "2025-04-16T10:37:00Z",
+        "thumbnail_path": "C:/Users/nduc0/Downloads/clock-video-ava.jpg",
+        "status": "uploaded"
+    },
+    {
+        "video_path": "C:/Users/nduc0/Downloads/videoplayback.mp4",
+        "title": "Hello",
+        "description": "My name is Minh Duc",
+        "scheduled_time": "2025-04-19T08:45:00Z",
+        "thumbnail_path": "C:/Users/nduc0/Downloads/clock-video-ava.jpg",
+        "status": "uploaded",
+        "video_id": "J5UT78TJFoY"
+    }
+]
