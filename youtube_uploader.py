@@ -19,7 +19,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import pandas as pd
 import matplotlib.ticker as mticker
 import math
-#   Constants and Globals  
+#   Constants and Globals
 CLIENT_SECRETS_FILE = 'client_secret.json'
 UPLOAD_READONLY_SCOPES = [
     'https://www.googleapis.com/auth/youtube.upload',
@@ -41,7 +41,7 @@ comment_templates_list = []
 vietnam_tz = None
 current_random_comment = ""
 
-# UI Element Globals 
+# UI Element Globals
 status_bar_instance = None
 upload_now_btn = None
 schedule_btn = None
@@ -55,9 +55,31 @@ analyze_video_btn = None
 analytics_video_combobox = None
 analytics_chart_frame = None
 analytics_report_text = None
-canvas_widget = None 
+canvas_widget = None
+num_comments_entry = None # Renamed from num_samples_entry
+generate_comments_btn = None # Renamed from generate_samples_btn
+analyze_custom_id_btn = None
+custom_video_id_analytics_entry = None
 
-#   StatusBar Class  
+# Meaningful Comment Templates
+MEANINGFUL_COMMENT_BASES = [
+    "Video tuyệt vời!", "Nội dung rất hay, cảm ơn bạn đã chia sẻ.", "Mình rất thích video này.",
+    "Làm tốt lắm! Tiếp tục phát huy nhé.", "Video này thật sự hữu ích.", "Chất lượng video tuyệt vời.",
+    "Wow, ấn tượng thật!", "Cảm ơn vì những thông tin giá trị.", "Rất sáng tạo!", "Hay lắm bạn ơi!",
+    "Xem xong thấy có thêm động lực. Cảm ơn bạn!", "Chúc mừng bạn đã có một video thành công!", "Yêu bạn!",
+    "Quá đỉnh!", "Hay quá đi mất!", "Tuyệt vời! Bạn làm rất tốt.", "Video này xứng đáng triệu view!", "Tuyệt cú mèo!",
+    "Tuyệt!", "Hay!", "Chất!", "Đỉnh!", "Oke bạn ơi.", "Thích nha.", "Good job!", "Amazing!", "Perfect!", "Awesome!",
+    "Cảm ơn bạn nhiều.", "Thanks for sharing!", "Rất biết ơn bạn.", "Cảm ơn vì đã làm video này.", "Thank you!",
+    "Video hay, tiếp tục phát huy nhé kênh.", "Nội dung chất lượng, mình đã sub kênh.", "Video ý nghĩa quá.",
+    "Mình đã học được nhiều điều từ video này.", "Xem giải trí mà vẫn có kiến thức.", "Đúng thứ mình đang tìm."
+]
+EMOJIS_LIST = ["👍", "❤️", "🎉", "💯", "🔥", "😮", "😂", "✨", "🌟", "😊", "😃", "😍", "🙏", "🙌", "👌", "💖", "🤣", "🤩"]
+COMMENT_SUFFIXES = [
+    "Rất mong video tiếp theo của bạn!", "Cố gắng lên nhé!", "Chúc kênh ngày càng phát triển!",
+    "Tuyệt vời ông mặt trời!", "Luôn ủng hộ bạn!", "5 sao cho video này!"
+]
+
+#   StatusBar Class
 class StatusBar(ttk.Frame):
     def __init__(self, master, **kwargs):
         super().__init__(master, **kwargs)
@@ -72,13 +94,13 @@ class StatusBar(ttk.Frame):
 
     def show_progress(self):
         self.progress.pack(side=tk.RIGHT, padx=5, pady=2)
-        self.progress.start(20) 
+        self.progress.start(20)
 
     def hide_progress(self):
         self.progress.stop()
         self.progress.pack_forget()
 
-# Logging 
+# Logging
 def log_status(message):
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     log_message = f"[{timestamp}] {message}"
@@ -89,7 +111,7 @@ def log_status(message):
         except Exception as e:
             print(f"Error updating status bar: {e}")
 
-#   Timezone and Time Conversion  
+#   Timezone and Time Conversion
 def initialize_timezone():
     global vietnam_tz
     try:
@@ -139,8 +161,7 @@ def convert_vn_str_to_utc_iso(vn_time_str, fmt='%Y-%m-%d %H:%M:%S'):
         return None, None
 
 
-#   Authentication  
-# (get_authenticated_service remains the same)
+#   Authentication
 def get_authenticated_service(scopes=UPLOAD_READONLY_SCOPES):
     global youtube_service_global
     with auth_lock:
@@ -192,7 +213,7 @@ def get_authenticated_service(scopes=UPLOAD_READONLY_SCOPES):
             return None
 
 
-#   YouTube API Actions  
+#   YouTube API Actions
 def upload_video(youtube, video_file_path, title, description, thumbnail_path=None, publish_time_utc_iso=None):
     if not youtube:
         log_status("Upload Error: YouTube service object is invalid.")
@@ -280,7 +301,7 @@ def upload_video(youtube, video_file_path, title, description, thumbnail_path=No
 
 
 def fetch_trending_videos_api(region_code, max_results=25):
-    service = get_authenticated_service(scopes=['https://www.googleapis.com/auth/youtube.readonly']) 
+    service = get_authenticated_service(scopes=['https://www.googleapis.com/auth/youtube.readonly'])
     if not service:
         log_status("Trending: Authentication failed for readonly scopes.")
         return None
@@ -309,7 +330,7 @@ def fetch_trending_videos_api(region_code, max_results=25):
 
 def post_comment_api(video_id, comment_text):
     log_status(f"Attempting to post comment on Video ID: {video_id}")
-    service = get_authenticated_service(scopes=COMMENT_SCOPE) # Use specific scope
+    service = get_authenticated_service(scopes=COMMENT_SCOPE)
 
     def final_update(success_message=None, error_message=None):
         if success_message:
@@ -319,9 +340,7 @@ def post_comment_api(video_id, comment_text):
              log_status(error_message)
              root.after(0, messagebox.showerror, "Comment Error", error_message)
 
-        if post_comment_btn and pick_comment_btn:
-            root.after(0, lambda: post_comment_btn.config(state=tk.NORMAL))
-            root.after(0, lambda: pick_comment_btn.config(state=tk.NORMAL))
+        root.after(0, set_comment_manage_buttons_state, tk.NORMAL)
         if status_bar_instance:
             root.after(0, status_bar_instance.hide_progress)
             root.after(0, status_bar_instance.clear)
@@ -353,11 +372,11 @@ def post_comment_api(video_id, comment_text):
         error_content = e.content.decode('utf-8')
         log_status(f"API Error posting comment on Video ID {video_id}: {e}")
         log_status(f"Error details: {error_content}")
-        display_error = f"API Error posting comment on Video ID {video_id}:\n{e}" # Default
+        display_error = f"API Error posting comment on Video ID {video_id}:\n{e}"
         try:
             error_json = json.loads(error_content)
             error_reason = error_json.get('error', {}).get('errors', [{}])[0].get('reason', 'Unknown API Error')
-            error_message = error_json.get('error', {}).get('message', str(e))
+            error_message_detail = error_json.get('error', {}).get('message', str(e))
 
             if error_reason == 'commentsDisabled':
                  display_error = f"Could not post comment.\nReason: Comments are disabled for Video ID {video_id}."
@@ -366,9 +385,9 @@ def post_comment_api(video_id, comment_text):
             elif error_reason == 'videoNotFound':
                  display_error = f"Could not post comment.\nReason: Video not found for ID {video_id}."
             else:
-                 display_error = f"API Error posting comment:\n{error_message}\n(Reason: {error_reason})"
+                 display_error = f"API Error posting comment:\n{error_message_detail}\n(Reason: {error_reason})"
         except json.JSONDecodeError:
-            pass 
+            pass
         final_update(error_message=display_error)
 
     except Exception as e:
@@ -394,16 +413,16 @@ def fetch_video_stats_api(video_id):
             return None, "Video not found"
 
         log_status(f"Successfully fetched stats for Video ID: {video_id}")
-        return items[0], None 
+        return items[0], None
 
     except HttpError as e:
         log_status(f"API Error fetching stats for Video ID {video_id}: {e}")
         error_detail = f"API Error: {e}"
-        try: 
+        try:
             error_content = e.content.decode('utf-8')
             error_json = json.loads(error_content)
-            error_message = error_json.get('error', {}).get('message', str(e))
-            error_detail = f"API Error: {error_message}"
+            error_message_detail = error_json.get('error', {}).get('message', str(e))
+            error_detail = f"API Error: {error_message_detail}"
         except Exception:
             pass
         return None, error_detail
@@ -412,7 +431,7 @@ def fetch_video_stats_api(video_id):
         return None, f"Unexpected Error: {e}"
 
 
-#   File Handling  
+#   File Handling
 def get_scheduled_posts_from_json(filepath):
     if not os.path.exists(filepath):
         log_status(f"Schedule file '{filepath}' not found. Creating empty.")
@@ -502,7 +521,7 @@ def save_comment_templates(templates, filepath=COMMENT_TEMPLATES_FILE):
         messagebox.showerror("Error", f"Unexpected error saving comment template file:\n{e}")
 
 
-#   Scheduler Logic  
+#   Scheduler Logic
 def process_scheduled_posts():
     global scheduled_posts_data
 
@@ -522,13 +541,13 @@ def process_scheduled_posts():
             try:
                 scheduled_time_utc = datetime.datetime.fromisoformat(scheduled_time_utc_str.replace('Z', '+00:00'))
                 if scheduled_time_utc <= now_utc + datetime.timedelta(minutes=1):
-                     if scheduled_time_utc >= now_utc - datetime.timedelta(minutes=5): 
+                     if scheduled_time_utc >= now_utc - datetime.timedelta(minutes=5):
                          log_status(f"Post '{post.get('title', 'Untitled')}' is due (Scheduled: {scheduled_time_utc_str}). Queuing.")
                          posts_to_process_indices.append(i)
-                         needs_processing = True 
+                         needs_processing = True
                      else:
                          log_status(f"Post '{post.get('title', 'Untitled')}' scheduled time {scheduled_time_utc_str} is too old. Skipping.")
-                         scheduled_posts_data[i]['status'] = 'error_too_old' # Optional new status
+                         scheduled_posts_data[i]['status'] = 'error_too_old'
                          needs_processing = True
 
             except ValueError:
@@ -543,8 +562,8 @@ def process_scheduled_posts():
     if not posts_to_process_indices:
         if needs_processing:
              save_scheduled_posts_to_json(scheduled_posts_data, SCHEDULED_POSTS_FILE)
-             status_queue.put("update_ui") 
-        return False 
+             status_queue.put("update_ui")
+        return False
 
     service = get_authenticated_service(scopes=UPLOAD_READONLY_SCOPES)
     if not service:
@@ -554,7 +573,7 @@ def process_scheduled_posts():
     processed_something = False
     for index in posts_to_process_indices:
         if index >= len(scheduled_posts_data) or scheduled_posts_data[index].get('status') != 'pending':
-            continue 
+            continue
         post_data = scheduled_posts_data[index]
         title = post_data.get('title', 'Untitled')
         video_path = post_data.get('video_path')
@@ -574,7 +593,7 @@ def process_scheduled_posts():
 
         if file_error:
             processed_something = True
-            continue 
+            continue
 
         try:
             upload_response = upload_video(
@@ -602,11 +621,11 @@ def process_scheduled_posts():
             scheduled_posts_data[index]['status'] = 'error_unknown'
             processed_something = True
 
-    if processed_something or needs_processing: 
+    if processed_something or needs_processing:
         save_scheduled_posts_to_json(scheduled_posts_data, SCHEDULED_POSTS_FILE)
         status_queue.put("update_ui")
 
-    return processed_something 
+    return processed_something
 
 def run_scheduler():
     log_status("Scheduler thread started.")
@@ -622,14 +641,14 @@ def run_scheduler():
             log_status(f"CRITICAL ERROR in scheduler loop: {e}")
 
         if threading.main_thread().is_alive():
-            sleep_time = 30 if processed else 60 
+            sleep_time = 30 if processed else 60
             time.sleep(sleep_time)
         else:
             log_status("Main thread closed. Stopping scheduler thread.")
             break
     log_status("Scheduler thread finished.")
 
-#   GUI Callbacks and Helpers  
+#   GUI Callbacks and Helpers
 def browse_file(entry_widget, filetypes):
     initial_dir = os.path.dirname(entry_widget.get()) if entry_widget.get() else os.path.expanduser("~")
     file_path = filedialog.askopenfilename(
@@ -664,7 +683,7 @@ def validate_inputs(check_time=True):
             messagebox.showerror("Input Error", "Please enter the schedule time (Vietnam Time).")
             return False, None, None
         utc_dt, utc_iso_str = convert_vn_str_to_utc_iso(scheduled_time_str_vn.strip())
-        if utc_dt is None: return False, None, None # Error shown in conversion
+        if utc_dt is None: return False, None, None
         log_status(f"VN time '{scheduled_time_str_vn}' validated and converted to UTC: {utc_iso_str}")
 
     return True, utc_dt, utc_iso_str
@@ -681,7 +700,7 @@ def schedule_upload_ui():
     min_schedule_time = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(minutes=2)
     if utc_dt <= min_schedule_time:
          messagebox.showerror("Input Error", "Schedule time must be at least a few minutes in the future.")
-         return 
+         return
 
     video_path = video_path_entry.get()
     title = title_entry.get().strip()
@@ -732,17 +751,16 @@ def upload_now_ui():
                 root.after(0, messagebox.showinfo, "Upload Successful", f"Successfully uploaded video '{title}'\nVideo ID: {video_id}")
                 upload_successful = True
 
-                # <<< ADDED >>> - Add to local list as 'uploaded' for analytics
                 uploaded_post_entry = {
                     "video_path": video_path, "title": title, "description": description,
-                    "scheduled_time": None, # Indicate it was uploaded now
+                    "scheduled_time": None,
                     "thumbnail_path": thumbnail_path if thumbnail_path else None,
                     "status": "uploaded",
                     "video_id": video_id
                 }
                 scheduled_posts_data.append(uploaded_post_entry)
                 save_scheduled_posts_to_json(scheduled_posts_data, SCHEDULED_POSTS_FILE)
-                status_queue.put("update_ui") 
+                status_queue.put("update_ui")
 
 
         else:
@@ -754,16 +772,15 @@ def upload_now_ui():
              if not upload_successful:
                 root.after(0, status_bar_instance.set_text, f"Upload failed for '{title}'. Check logs.")
              else:
-                root.after(0, status_bar_instance.clear) # Clear on success
-                # <<< ADDED >>>
-                root.after(0, clear_input_fields) # Clear fields on successful upload now
+                root.after(0, status_bar_instance.clear)
+                root.after(0, clear_input_fields)
 
     threading.Thread(target=upload_task, daemon=True).start()
-    log_status("Background thread for immediate upload started.") # Update status bar
+    log_status("Background thread for immediate upload started.")
 
 
 def refresh_scheduled_list():
-    scheduled_list_treeview.tag_configure('oddrow', background='#F0F0F0') 
+    scheduled_list_treeview.tag_configure('oddrow', background='#F0F0F0')
     scheduled_list_treeview.tag_configure('evenrow', background='white')
     scheduled_list_treeview.tag_configure('uploaded', foreground='green')
     scheduled_list_treeview.tag_configure('error', foreground='red')
@@ -776,17 +793,17 @@ def refresh_scheduled_list():
     for i, post in enumerate(scheduled_posts_data):
         title = post.get('title', 'N/A')
         status = post.get('status', 'N/A')
-        time_utc_str = post.get('scheduled_time', '') 
-        time_vn_str = convert_utc_to_vn_str(time_utc_str) if time_utc_str else "Uploaded Now" 
+        time_utc_str = post.get('scheduled_time', '')
+        time_vn_str = convert_utc_to_vn_str(time_utc_str) if time_utc_str else "Uploaded Now"
 
         row_tag = 'oddrow' if i % 2 else 'evenrow'
         status_tag_map = {
             'uploaded': 'uploaded',
             'pending': 'pending',
-            'processing': 'processing', 
+            'processing': 'processing',
         }
         status_tag = status_tag_map.get(status)
-        if not status_tag and status and status.startswith('error'): 
+        if not status_tag and status and status.startswith('error'):
             status_tag = 'error'
 
         tags = (row_tag, status_tag) if status_tag else (row_tag,)
@@ -815,7 +832,7 @@ def load_post_details(post_data):
     description_text.insert("1.0", post_data.get('description', ''))
     thumbnail_path_entry.insert(0, post_data.get('thumbnail_path', ''))
     utc_time_str = post_data.get('scheduled_time', '')
-    if utc_time_str: 
+    if utc_time_str:
         vn_time_str = convert_utc_to_vn_str(utc_time_str)
         if vn_time_str != "N/A" and vn_time_str != "Invalid Date":
             datetime_entry.insert(0, vn_time_str)
@@ -842,7 +859,7 @@ def delete_selected_post():
                 log_status(f"Deleting post index {index_to_delete}: '{title}' (Status: {status})")
                 del scheduled_posts_data[index_to_delete]
                 save_scheduled_posts_to_json(scheduled_posts_data, SCHEDULED_POSTS_FILE)
-                refresh_scheduled_list() 
+                refresh_scheduled_list()
                 clear_input_fields()
                 log_status(f"Deleted '{title}' from schedule list.")
         else:
@@ -872,7 +889,7 @@ def check_status_queue():
     except queue.Empty:
         pass
     finally:
-        root.after(1500, check_status_queue) 
+        root.after(1500, check_status_queue)
 
 
 def fetch_and_display_trending():
@@ -909,11 +926,11 @@ def clear_trending_results(message=""):
          trending_list_treeview.insert('', tk.END, values=(message, "", ""))
 
 def display_trending_results(videos, region):
-    clear_trending_results() 
+    clear_trending_results()
     trending_list_treeview.tag_configure('oddrow', background='#F0F0F0')
     trending_list_treeview.tag_configure('evenrow', background='white')
 
-    if videos is None: 
+    if videos is None:
         log_status(f"Failed to display trending for {region} (fetch error).")
         trending_list_treeview.insert('', tk.END, values=(f"Error fetching videos for {region}", "", ""))
         trending_status_label.config(text=f"Region: {region} (Error)")
@@ -950,7 +967,12 @@ def set_comment_manage_buttons_state(state=tk.NORMAL):
      if add_comment_btn: add_comment_btn.config(state=state)
      if delete_comment_btn: delete_comment_btn.config(state=state)
      if pick_comment_btn: pick_comment_btn.config(state=state)
-     post_enabled = state == tk.NORMAL and current_random_comment and video_id_entry.get()
+
+     if generate_comments_btn: generate_comments_btn.config(state=state)
+     if num_comments_entry: num_comments_entry.config(state=tk.NORMAL if state == tk.NORMAL else tk.DISABLED)
+
+
+     post_enabled = state == tk.NORMAL and bool(current_random_comment) and bool(video_id_entry.get().strip())
      if post_comment_btn: post_comment_btn.config(state=tk.NORMAL if post_enabled else tk.DISABLED)
 
 def add_comment_template():
@@ -980,7 +1002,8 @@ def delete_selected_comment_template():
         log_status(f"Deleted comment template: '{template_to_delete}'")
         save_comment_templates(comment_templates_list)
         if current_random_comment == template_to_delete:
-            pick_random_comment(force_clear=True) 
+            pick_random_comment(force_clear=True)
+            set_comment_manage_buttons_state(tk.NORMAL)
 
 def pick_random_comment(force_clear=False):
     global current_random_comment
@@ -990,18 +1013,20 @@ def pick_random_comment(force_clear=False):
         random_comment_display.config(state=tk.NORMAL)
         random_comment_display.delete("1.0", tk.END)
         random_comment_display.insert("1.0", display_text)
-        random_comment_display.config(state=tk.DISABLED) 
+        random_comment_display.config(state=tk.DISABLED)
         if not comment_templates_list and not force_clear:
             messagebox.showwarning("Empty List", "No comment templates to choose from.")
+        set_comment_manage_buttons_state(tk.NORMAL)
         return
 
     chosen_comment = random.choice(comment_templates_list)
     current_random_comment = chosen_comment
-    random_comment_display.config(state=tk.NORMAL) # Enable writing
+    random_comment_display.config(state=tk.NORMAL)
     random_comment_display.delete("1.0", tk.END)
     random_comment_display.insert("1.0", f"{chosen_comment}")
-    random_comment_display.config(state=tk.DISABLED) # Make read-only again
+    random_comment_display.config(state=tk.DISABLED)
     log_status(f"Randomly selected comment: '{chosen_comment}'")
+    set_comment_manage_buttons_state(tk.NORMAL)
 
 def post_comment_ui():
     video_id = video_id_entry.get().strip()
@@ -1011,25 +1036,99 @@ def post_comment_ui():
         messagebox.showwarning("Input Required", "Enter the Video ID.")
         return
     if not comment_to_post:
-         messagebox.showwarning("No Comment Selected", "Click 'Pick Random Comment' first.")
+         messagebox.showwarning("No Comment Selected", "Click 'Pick Random Comment' first or ensure templates exist.")
          return
 
     confirm_msg = f"Post this comment:\n\n'{comment_to_post}'\n\nTo Video ID:\n{video_id}?"
     if messagebox.askyesno("Confirm Comment Post", confirm_msg):
         log_status(f"Starting background thread to post comment on Video ID: {video_id}")
-        if post_comment_btn: post_comment_btn.config(state=tk.DISABLED)
-        if pick_comment_btn: pick_comment_btn.config(state=tk.DISABLED) 
+        set_comment_manage_buttons_state(tk.DISABLED)
         if status_bar_instance: status_bar_instance.show_progress()
-        log_status(f"Posting comment to {video_id}...") 
+        log_status(f"Posting comment to {video_id}...")
 
         comment_thread = threading.Thread(target=post_comment_api, args=(video_id, comment_to_post), daemon=True)
         comment_thread.start()
 
+def generate_meaningful_comments_ui():
+    try:
+        num_str = num_comments_entry.get()
+        if not num_str.isdigit():
+            messagebox.showerror("Input Error", "Please enter a valid number for comments.")
+            return
+        num_to_generate = int(num_str)
+        if num_to_generate <= 0:
+            messagebox.showerror("Input Error", "Number of comments must be greater than 0.")
+            return
+        if num_to_generate > 5000: # Limit for practical reasons
+             if not messagebox.askyesno("Confirmation", f"Generating {num_to_generate:,} comments might take some time and could result in many similar templates if the base list is small. This will add to your existing templates. Proceed?"):
+                return
+        elif not messagebox.askyesno("Confirm Generation", f"This will attempt to generate up to {num_to_generate} meaningful comment templates and add them to your list. Some may be duplicates if generated multiple times. Proceed?"):
+            return
 
+    except ValueError:
+        messagebox.showerror("Input Error", "Invalid number entered.")
+        return
+
+    log_status(f"Generating up to {num_to_generate} meaningful comments...")
+    if status_bar_instance: status_bar_instance.show_progress()
+    set_comment_manage_buttons_state(tk.DISABLED)
+
+    def generation_task():
+        newly_generated_comments_set = set() # Use set to avoid duplicates within this generation batch
+        existing_set = set(comment_templates_list)
+
+        generated_count = 0
+        attempts = 0
+        max_attempts = num_to_generate * 3 # Try a bit harder to get unique comments
+
+        while generated_count < num_to_generate and attempts < max_attempts:
+            attempts += 1
+            base_comment = random.choice(MEANINGFUL_COMMENT_BASES)
+            comment_with_optional_emoji = base_comment
+
+            if random.random() < 0.6: # 60% chance to add an emoji
+                already_has_emoji = any(base_comment.endswith(e) for e in EMOJIS_LIST)
+                if not already_has_emoji:
+                    comment_with_optional_emoji += " " + random.choice(EMOJIS_LIST)
+
+            final_comment = comment_with_optional_emoji
+            if random.random() < 0.3: # 30% chance to add a suffix
+                already_has_suffix = any(final_comment.endswith(s) for s in COMMENT_SUFFIXES)
+                if not already_has_suffix:
+                     final_comment += " " + random.choice(COMMENT_SUFFIXES)
+
+            final_comment = final_comment.strip()
+            final_comment = final_comment[:490] # YouTube comment limit is 10000, but practically shorter is better. 500 is a good limit.
+
+            if final_comment not in existing_set and final_comment not in newly_generated_comments_set:
+                newly_generated_comments_set.add(final_comment)
+                generated_count += 1
+
+        added_to_main_list_count = 0
+        if newly_generated_comments_set:
+            for c in newly_generated_comments_set:
+                if c not in comment_templates_list: # Final check before adding to global list
+                    comment_templates_list.append(c)
+                    added_to_main_list_count +=1
+            if added_to_main_list_count > 0:
+                save_comment_templates(comment_templates_list)
+            log_status(f"Generated {len(newly_generated_comments_set)} unique comments. Added {added_to_main_list_count} new comments to the global list.")
+            root.after(0, messagebox.showinfo, "Success", f"{added_to_main_list_count} new meaningful comment templates added (out of {len(newly_generated_comments_set)} unique generated this run).")
+        else:
+            log_status("No new unique meaningful comments were generated in this batch.")
+            root.after(0, messagebox.showinfo, "Info", "No new unique meaningful comments generated (all might exist or number was 0).")
+
+        root.after(0, refresh_comment_template_listbox)
+        root.after(0, lambda: num_comments_entry.delete(0, tk.END))
+        if status_bar_instance:
+            root.after(0, status_bar_instance.hide_progress)
+            root.after(0, status_bar_instance.clear)
+        root.after(0, set_comment_manage_buttons_state, tk.NORMAL)
+
+    threading.Thread(target=generation_task, daemon=True).start()
 
 def update_analyzable_videos_list():
-    """Populates the Combobox in the Analytics tab with uploaded videos."""
-    if not analytics_video_combobox: return 
+    if not analytics_video_combobox: return
 
     uploaded_videos = []
     analytics_video_combobox.video_map = {}
@@ -1043,8 +1142,12 @@ def update_analyzable_videos_list():
             analytics_video_combobox.video_map[display_title] = video_id
 
     if uploaded_videos:
+        current_selection = analytics_video_combobox.get()
         analytics_video_combobox['values'] = uploaded_videos
-        analytics_video_combobox.current(0) 
+        if current_selection in uploaded_videos:
+            analytics_video_combobox.set(current_selection)
+        else:
+            analytics_video_combobox.current(0)
         analytics_video_combobox.config(state='readonly')
         if analyze_video_btn: analyze_video_btn.config(state=tk.NORMAL)
     else:
@@ -1057,7 +1160,6 @@ def update_analyzable_videos_list():
     log_status(f"Updated analyzable videos list: {len(uploaded_videos)} items.")
 
 def clear_analytics_results():
-    """Clears the chart and report text."""
     global canvas_widget
     if canvas_widget:
         canvas_widget.get_tk_widget().destroy()
@@ -1068,9 +1170,37 @@ def clear_analytics_results():
         analytics_report_text.delete("1.0", tk.END)
         analytics_report_text.config(state=tk.DISABLED)
 
-def analyze_selected_video():
-    """Callback for the 'Analyze' button."""
-    if not analytics_video_combobox or analytics_video_combobox.current() == -1:
+def _trigger_analysis_task(video_id, display_identifier_for_ui):
+    log_status(f"Analysis requested for: {display_identifier_for_ui} (Actual ID: {video_id})")
+    clear_analytics_results()
+
+    if analyze_video_btn: root.after(0, lambda: analyze_video_btn.config(state=tk.DISABLED))
+    if analyze_custom_id_btn: root.after(0, lambda: analyze_custom_id_btn.config(state=tk.DISABLED))
+    if status_bar_instance: root.after(0, status_bar_instance.show_progress)
+    log_status(f"Fetching analytics data for {video_id}...")
+
+    def analysis_task_internal():
+        video_data, error = fetch_video_stats_api(video_id)
+        analysis_successful = video_data is not None
+
+        root.after(0, display_analysis_results, video_data, error, display_identifier_for_ui)
+
+        if analyze_video_btn:
+             is_combobox_valid = analytics_video_combobox.get() and analytics_video_combobox.cget('state') != 'disabled'
+             root.after(0, lambda: analyze_video_btn.config(state=tk.NORMAL if is_combobox_valid else tk.DISABLED))
+        if analyze_custom_id_btn: root.after(0, lambda: analyze_custom_id_btn.config(state=tk.NORMAL))
+
+        if status_bar_instance:
+             root.after(0, status_bar_instance.hide_progress)
+             if not analysis_successful:
+                 root.after(0, status_bar_instance.set_text, f"Analytics failed for {video_id}. {error}")
+             else:
+                 root.after(0, status_bar_instance.clear)
+
+    threading.Thread(target=analysis_task_internal, daemon=True).start()
+
+def analyze_selected_video_ui():
+    if not analytics_video_combobox or analytics_video_combobox.current() == -1 or analytics_video_combobox.cget('state') == 'disabled':
         messagebox.showwarning("No Selection", "Please select a video from the list.")
         return
 
@@ -1082,36 +1212,29 @@ def analyze_selected_video():
         log_status(f"Error: Video ID not found for display title '{selected_display_title}'")
         return
 
-    log_status(f"Analysis requested for: {selected_display_title} (ID: {video_id})")
-    clear_analytics_results() 
+    _trigger_analysis_task(video_id, selected_display_title)
 
-    def analysis_task():
-        if analyze_video_btn: root.after(0, lambda: analyze_video_btn.config(state=tk.DISABLED))
-        if status_bar_instance: root.after(0, status_bar_instance.show_progress)
-        log_status(f"Fetching analytics data for {video_id}...")
 
-        video_data, error = fetch_video_stats_api(video_id)
-        analysis_successful = video_data is not None
+def analyze_custom_video_id_ui():
+    video_id = custom_video_id_analytics_entry.get().strip()
+    if not video_id:
+        messagebox.showwarning("Input Required", "Please enter a Video ID to analyze.")
+        return
 
-        root.after(0, display_analysis_results, video_data, error, selected_display_title)
-        if analyze_video_btn: root.after(0, lambda: analyze_video_btn.config(state=tk.NORMAL))
-        if status_bar_instance:
-             root.after(0, status_bar_instance.hide_progress)
-             if not analysis_successful:
-                 root.after(0, status_bar_instance.set_text, f"Analytics failed for {video_id}. {error}")
-             else:
-                 root.after(0, status_bar_instance.clear)
+    if len(video_id) != 11 :
+         messagebox.showwarning("Invalid Format", "Video ID usually has 11 characters. Please check.")
 
-    threading.Thread(target=analysis_task, daemon=True).start()
 
-def display_analysis_results(video_data, error, display_title):
-    """Updates the Analytics tab with fetched data or error messages."""
-    clear_analytics_results() # Ensure clean slate
+    _trigger_analysis_task(video_id, f"Custom ID: {video_id}")
+
+
+def display_analysis_results(video_data, error, display_identifier):
+    clear_analytics_results()
 
     if error:
-        log_status(f"Failed to display analysis for '{display_title}': {error}")
-        messagebox.showerror("Analysis Error", f"Could not get data for '{display_title}':\n{error}")
-        report_content = f"Error fetching data for '{display_title}':\n\n{error}"
+        log_status(f"Failed to display analysis for '{display_identifier}': {error}")
+        messagebox.showerror("Analysis Error", f"Could not get data for '{display_identifier}':\n{error}")
+        report_content = f"Error fetching data for '{display_identifier}':\n\n{error}"
         if analytics_report_text:
             analytics_report_text.config(state=tk.NORMAL)
             analytics_report_text.insert("1.0", report_content)
@@ -1119,13 +1242,18 @@ def display_analysis_results(video_data, error, display_title):
         return
 
     if not video_data:
-        log_status(f"No video data returned for '{display_title}', cannot display.")
+        log_status(f"No video data returned for '{display_identifier}', cannot display.")
+        if analytics_report_text:
+            analytics_report_text.config(state=tk.NORMAL)
+            analytics_report_text.insert("1.0", f"No data returned for '{display_identifier}'. The video might be private, deleted, or the ID is incorrect.")
+            analytics_report_text.config(state=tk.DISABLED)
         return
 
-    # Extract data
     snippet = video_data.get('snippet', {})
     stats = video_data.get('statistics', {})
-    title = snippet.get('title', 'N/A')
+
+    video_api_title = snippet.get('title', display_identifier)
+
     publish_time_utc = snippet.get('publishedAt')
     publish_time_vn = convert_utc_to_vn_str(publish_time_utc) if publish_time_utc else "N/A"
 
@@ -1137,49 +1265,45 @@ def display_analysis_results(video_data, error, display_title):
     likes = safe_int(stats.get('likeCount'))
     comments = safe_int(stats.get('commentCount'))
 
-    # --- 1. Display Chart ---
     if analytics_chart_frame:
         try:
-            # Prepare data for plot
             data = {'Metric': ['Views', 'Likes', 'Comments'],
                     'Count': [views, likes, comments]}
             df = pd.DataFrame(data)
 
-            # Create Matplotlib figure and axes
             fig, ax = plt.subplots(figsize=(6, 3.5), dpi=100)
             bars = ax.bar(df['Metric'], df['Count'], color=['skyblue', 'lightcoral', 'lightgreen'])
 
-            # Add labels and title
             ax.set_ylabel('Count')
-            ax.set_title(f'Video Performance Metrics\n({title[:50]}{"..." if len(title)>50 else ""})')
+            chart_title_text = video_api_title[:50] + ("..." if len(video_api_title) > 50 else "")
+            ax.set_title(f'Video Performance Metrics\n({chart_title_text})')
+
             ax.tick_params(axis='x', rotation=0)
             ax.spines['top'].set_visible(False)
             ax.spines['right'].set_visible(False)
 
-            # Đặt giới hạn dưới của trục Y là 0 và giới hạn trên hợp lý
-            max_count = max(views, likes, comments)
-            # Tính toán giới hạn trên là số nguyên lớn hơn hoặc bằng max_count * 1.1, tối thiểu là 5
-            top_limit = max(math.ceil(max_count * 1.1), 5)
+            max_val_for_ylim = max(views, likes, comments, 1)
+            top_limit = max(math.ceil(max_val_for_ylim * 1.15), 5)
             ax.set_ylim(bottom=0, top=top_limit)
 
-            # <<< THÊM DÒNG NÀY >>>
-            # Buộc các vạch chia chính trên trục Y là các số nguyên cách nhau 1 đơn vị
-            ax.yaxis.set_major_locator(mticker.MultipleLocator(1))
-            # <<< KẾT THÚC THÊM DÒNG >>>
+            if top_limit <= 10 and top_limit > 0 :
+                 ax.yaxis.set_major_locator(mticker.MultipleLocator(1))
+            elif top_limit > 10 and top_limit <= 50:
+                 ax.yaxis.set_major_locator(mticker.MultipleLocator(math.ceil(top_limit / 10.0)))
+            else:
+                 ax.yaxis.set_major_locator(mticker.AutoLocator())
 
-            # Add count labels on top of bars
+
             for bar in bars:
                  yval = bar.get_height()
-                 # Chỉ hiển thị nhãn nếu giá trị > 0 để tránh chồng lấp số 0 ở gốc tọa độ
-                 if yval > 0:
-                     plt.text(bar.get_x() + bar.get_width()/2.0, yval, f'{yval:,}', va='bottom', ha='center')
+                 if yval > 0 or (yval == 0 and max_val_for_ylim <=1):
+                     ax.text(bar.get_x() + bar.get_width()/2.0, yval, f'{yval:,}', va='bottom', ha='center', fontsize=9)
 
-            # Embed the plot in Tkinter
             global canvas_widget
             canvas_widget = FigureCanvasTkAgg(fig, master=analytics_chart_frame)
             canvas_widget.draw()
             canvas_widget.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
-            plt.tight_layout() # Adjust layout
+            plt.tight_layout()
 
         except Exception as e:
             log_status(f"Error creating analytics chart: {e}")
@@ -1188,10 +1312,13 @@ def display_analysis_results(video_data, error, display_title):
                 analytics_report_text.insert(tk.END, f"\n\nError generating chart: {e}")
                 analytics_report_text.config(state=tk.DISABLED)
 
-    # --- 2. Display Report ---
     if analytics_report_text:
-        report_content = f"--- Statistics Report ---\n\n"
-        report_content += f"Video Title: {title}\n"
+        report_content = f"--- Statistics Report for: {display_identifier} ---\n\n"
+        if video_api_title != display_identifier and 'Custom ID' not in display_identifier:
+             report_content += f"Video Title (from API): {video_api_title}\n"
+        elif 'Custom ID' in display_identifier and video_api_title != display_identifier:
+             report_content += f"Video Title (from API): {video_api_title}\n"
+
         report_content += f"Video ID: {video_data.get('id', 'N/A')}\n"
         report_content += f"Published (VN Time): {publish_time_vn}\n\n"
         report_content += f"Views: {views:,}\n"
@@ -1199,21 +1326,20 @@ def display_analysis_results(video_data, error, display_title):
         report_content += f"Comments: {comments:,}\n"
 
         analytics_report_text.config(state=tk.NORMAL)
-        analytics_report_text.delete("1.0", tk.END) # Xóa nội dung cũ trước khi chèn
+        analytics_report_text.delete("1.0", tk.END)
         analytics_report_text.insert("1.0", report_content)
         analytics_report_text.config(state=tk.DISABLED)
 
-    log_status(f"Displayed analytics for '{display_title}'")
+    log_status(f"Displayed analytics for '{display_identifier}'")
 
 
-#   Main Application Setup  
+#   Main Application Setup
 if __name__ == "__main__":
-    # ... (Phần setup main không đổi) ...
     try:
         root = ThemedTk(theme="arc")
     except tk.TclError:
         print("WARNING: ttktheme 'arc' not found, falling back to default Tk.")
-        root = tk.Tk() # Fallback
+        root = tk.Tk()
 
     root.title("YouTube Tool")
     root.geometry("1000x800")
@@ -1237,12 +1363,11 @@ if __name__ == "__main__":
     notebook.pack(pady=10, padx=10, fill="both", expand=True)
 
     # === Tab 1: Uploader & Scheduler ===
-    # ... (Layout Tab 1 không đổi) ...
     uploader_tab = ttk.Frame(notebook, padding="15")
     notebook.add(uploader_tab, text=' Upload & Schedule ')
     input_frame = ttk.LabelFrame(uploader_tab, text=" Video Details ", padding="15")
     input_frame.grid(row=0, column=0, padx=0, pady=0, sticky="nsew")
-    input_frame.columnconfigure(1, weight=1) # Allow entry fields to expand
+    input_frame.columnconfigure(1, weight=1)
     ttk.Label(input_frame, text="Video File:").grid(row=0, column=0, padx=5, pady=6, sticky="w")
     video_path_entry = ttk.Entry(input_frame, width=60)
     video_path_entry.grid(row=0, column=1, padx=5, pady=6, sticky="ew")
@@ -1264,21 +1389,21 @@ if __name__ == "__main__":
     time_format_label = ttk.Label(input_frame, text="YYYY-MM-DD HH:MM:SS", foreground="grey")
     time_format_label.grid(row=4, column=2, padx=5, pady=6, sticky="w")
     button_frame_input = ttk.Frame(input_frame)
-    button_frame_input.grid(row=5, column=0, columnspan=3, pady=(20, 5)) # Centered by grid columnspan
+    button_frame_input.grid(row=5, column=0, columnspan=3, pady=(20, 5))
     upload_now_btn = ttk.Button(button_frame_input, text="Upload Now (Public)", command=upload_now_ui)
     upload_now_btn.pack(side=tk.LEFT, padx=10)
     schedule_btn = ttk.Button(button_frame_input, text="Schedule Upload", command=schedule_upload_ui)
     schedule_btn.pack(side=tk.LEFT, padx=10)
     clear_btn = ttk.Button(button_frame_input, text="Clear Fields", command=clear_input_fields)
     clear_btn.pack(side=tk.LEFT, padx=10)
-    list_frame = ttk.LabelFrame(uploader_tab, text=" Scheduled & Uploaded Posts ", padding="10") # <<< MODIFIED Text
+    list_frame = ttk.LabelFrame(uploader_tab, text=" Scheduled & Uploaded Posts ", padding="10")
     list_frame.grid(row=1, column=0, padx=0, pady=15, sticky="nsew")
     list_frame.rowconfigure(0, weight=1)
     list_frame.columnconfigure(0, weight=1)
     columns_sched = ('title', 'time_vn', 'status')
     scheduled_list_treeview = ttk.Treeview(list_frame, columns=columns_sched, show='headings', height=8)
     scheduled_list_treeview.heading('title', text='Title', anchor='w')
-    scheduled_list_treeview.heading('time_vn', text='Time (VN) / Status', anchor='center') # <<< MODIFIED Text
+    scheduled_list_treeview.heading('time_vn', text='Time (VN) / Status', anchor='center')
     scheduled_list_treeview.heading('status', text='Status', anchor='center')
     scheduled_list_treeview.column('title', width=350, stretch=tk.YES, anchor='w')
     scheduled_list_treeview.column('time_vn', width=160, stretch=tk.NO, anchor='center')
@@ -1290,20 +1415,19 @@ if __name__ == "__main__":
     button_frame_list = ttk.Frame(list_frame)
     button_frame_list.grid(row=1, column=0, columnspan=2, pady=(10, 0))
     ttk.Button(button_frame_list, text="Refresh List", command=refresh_scheduled_list).pack(side=tk.LEFT, padx=10)
-    ttk.Button(button_frame_list, text="Delete Selected (List Only)", command=delete_selected_post).pack(side=tk.LEFT, padx=10) # <<< MODIFIED Text
+    ttk.Button(button_frame_list, text="Delete Selected (List Only)", command=delete_selected_post).pack(side=tk.LEFT, padx=10)
     scheduled_list_treeview.bind('<<TreeviewSelect>>', on_scheduled_item_select)
     uploader_tab.rowconfigure(1, weight=1)
     uploader_tab.columnconfigure(0, weight=1)
 
     # === Tab 2: Trending Videos ===
-    # ... (Layout Tab 2 không đổi) ...
     trending_tab = ttk.Frame(notebook, padding="15")
     notebook.add(trending_tab, text=' Trending Videos ')
     trending_controls_frame = ttk.Frame(trending_tab)
     trending_controls_frame.pack(pady=10, fill="x")
     ttk.Label(trending_controls_frame, text="Region Code:").pack(side=tk.LEFT, padx=(0, 5))
     region_code_entry = ttk.Entry(trending_controls_frame, width=5)
-    region_code_entry.insert(0, "VN") # Default to VN
+    region_code_entry.insert(0, "VN")
     region_code_entry.pack(side=tk.LEFT, padx=5)
     fetch_trending_btn = ttk.Button(trending_controls_frame, text="Get Trending", command=fetch_and_display_trending)
     fetch_trending_btn.pack(side=tk.LEFT, padx=10)
@@ -1325,24 +1449,23 @@ if __name__ == "__main__":
     scrollbar_trend.pack(side=tk.RIGHT, fill="y")
 
     # === Tab 3: Auto Interaction ===
-    # ... (Layout Tab 3 không đổi) ...
     interaction_tab = ttk.Frame(notebook, padding="15")
     notebook.add(interaction_tab, text=' Comment Tools ')
     comment_frame = ttk.LabelFrame(interaction_tab, text=" Comment Templates ", padding="10")
     comment_frame.grid(row=0, column=0, pady=10, padx=0, sticky="nsew")
-    comment_frame.columnconfigure(0, weight=1) # Allow listbox frame to expand
+    comment_frame.columnconfigure(0, weight=1)
     comment_list_frame = ttk.Frame(comment_frame)
-    comment_list_frame.grid(row=0, column=0, pady=5, sticky='nsew') # Use grid here too
+    comment_list_frame.grid(row=0, column=0, pady=5, sticky='nsew')
     comment_list_frame.columnconfigure(0, weight=1)
-    comment_list_frame.rowconfigure(1, weight=1) # Allow listbox to expand vertically
+    comment_list_frame.rowconfigure(1, weight=1)
     ttk.Label(comment_list_frame, text="Saved Comments:").grid(row=0, column=0, sticky='w', padx=5)
     comment_scrollbar = ttk.Scrollbar(comment_list_frame, orient=tk.VERTICAL)
-    comment_template_listbox = tk.Listbox(comment_list_frame, height=8, yscrollcommand=comment_scrollbar.set, relief=tk.SOLID, borderwidth=1, exportselection=False) # exportselection=False is good practice
+    comment_template_listbox = tk.Listbox(comment_list_frame, height=8, yscrollcommand=comment_scrollbar.set, relief=tk.SOLID, borderwidth=1, exportselection=False)
     comment_scrollbar.config(command=comment_template_listbox.yview)
     comment_template_listbox.grid(row=1, column=0, sticky='nsew', padx=(5,0), pady=5)
     comment_scrollbar.grid(row=1, column=1, sticky='ns', pady=5)
     comment_input_frame = ttk.Frame(comment_frame)
-    comment_input_frame.grid(row=1, column=0, pady=5, sticky='ew') # Use grid
+    comment_input_frame.grid(row=1, column=0, pady=5, sticky='ew')
     comment_input_frame.columnconfigure(1, weight=1)
     ttk.Label(comment_input_frame, text="New:").grid(row=0, column=0, padx=(5,2), pady=5, sticky='w')
     new_comment_entry = ttk.Entry(comment_input_frame)
@@ -1350,14 +1473,27 @@ if __name__ == "__main__":
     add_comment_btn = ttk.Button(comment_input_frame, text="Add", command=add_comment_template, width=5)
     add_comment_btn.grid(row=0, column=2, padx=(0,5), pady=5)
     comment_button_frame = ttk.Frame(comment_frame)
-    comment_button_frame.grid(row=2, column=0, pady=(5, 10)) # Use grid
+    comment_button_frame.grid(row=2, column=0, pady=(5, 0))
     delete_comment_btn = ttk.Button(comment_button_frame, text="Delete Selected", command=delete_selected_comment_template)
     delete_comment_btn.pack(side=tk.LEFT, padx=10)
+
+    generate_comments_frame = ttk.LabelFrame(comment_frame, text=" Generate Meaningful Comments ", padding="10")
+    generate_comments_frame.grid(row=3, column=0, pady=(10,5), sticky="ew")
+    generate_comments_frame.columnconfigure(1, weight=0)
+
+    ttk.Label(generate_comments_frame, text="Number to generate:").grid(row=0, column=0, padx=5, pady=5, sticky="w")
+    num_comments_entry = ttk.Entry(generate_comments_frame, width=10)
+    num_comments_entry.grid(row=0, column=1, padx=5, pady=5, sticky="w")
+
+    generate_comments_btn = ttk.Button(generate_comments_frame, text="Generate & Add", command=generate_meaningful_comments_ui)
+    generate_comments_btn.grid(row=0, column=2, padx=5, pady=5, sticky="e")
+
+
     post_frame = ttk.LabelFrame(interaction_tab, text=" Post Random Comment ", padding="10")
     post_frame.grid(row=1, column=0, pady=15, padx=0, sticky="nsew")
-    post_frame.columnconfigure(1, weight=1) # Allow label to expand
+    post_frame.columnconfigure(1, weight=1)
     random_select_frame = ttk.Frame(post_frame)
-    random_select_frame.grid(row=0, column=0, columnspan=3, pady=5, sticky='ew') # Use grid
+    random_select_frame.grid(row=0, column=0, columnspan=3, pady=5, sticky='ew')
     random_select_frame.columnconfigure(1, weight=1)
     pick_comment_btn = ttk.Button(random_select_frame, text="Pick Random Comment", command=pick_random_comment)
     pick_comment_btn.grid(row=0, column=0, padx=(5,10), pady=5)
@@ -1365,27 +1501,40 @@ if __name__ == "__main__":
     random_comment_display.grid(row=0, column=1, sticky='ew', pady=5, padx=5)
     pick_random_comment(force_clear=True)
     post_action_frame = ttk.Frame(post_frame)
-    post_action_frame.grid(row=1, column=0, columnspan=3, pady=10, sticky='ew') # Use grid
+    post_action_frame.grid(row=1, column=0, columnspan=3, pady=10, sticky='ew')
     ttk.Label(post_action_frame, text="Video ID:").pack(side=tk.LEFT, padx=(5, 5))
     video_id_entry = ttk.Entry(post_action_frame, width=20)
     video_id_entry.pack(side=tk.LEFT, padx=5)
-    post_comment_btn = ttk.Button(post_action_frame, text="Post Selected Comment", command=post_comment_ui, state=tk.DISABLED) # Initially disabled
+    video_id_entry.bind("<KeyRelease>", lambda event: set_comment_manage_buttons_state(tk.NORMAL))
+    post_comment_btn = ttk.Button(post_action_frame, text="Post Selected Comment", command=post_comment_ui, state=tk.DISABLED)
     post_comment_btn.pack(side=tk.LEFT, padx=10)
-    interaction_tab.rowconfigure(0, weight=1)
-    interaction_tab.rowconfigure(1, weight=0)
+    interaction_tab.rowconfigure(0, weight=3)
+    interaction_tab.rowconfigure(1, weight=1)
     interaction_tab.columnconfigure(0, weight=1)
 
     # === Tab 4: Analytics ===
-    # ... (Layout Tab 4 không đổi) ...
     analytics_tab = ttk.Frame(notebook, padding="15")
     notebook.add(analytics_tab, text=' Analytics ')
     analytics_controls_frame = ttk.Frame(analytics_tab)
     analytics_controls_frame.pack(pady=10, fill="x")
-    ttk.Label(analytics_controls_frame, text="Select Uploaded Video:").pack(side=tk.LEFT, padx=(0, 5))
-    analytics_video_combobox = ttk.Combobox(analytics_controls_frame, width=50, state='disabled') # Start disabled
+
+    combobox_frame = ttk.Frame(analytics_controls_frame)
+    combobox_frame.pack(side=tk.LEFT, fill='x', expand=False, padx=(0,10))
+    ttk.Label(combobox_frame, text="Select Uploaded Video:").pack(side=tk.LEFT, padx=(0, 5))
+    analytics_video_combobox = ttk.Combobox(combobox_frame, width=45, state='disabled')
     analytics_video_combobox.pack(side=tk.LEFT, padx=5)
-    analyze_video_btn = ttk.Button(analytics_controls_frame, text="Analyze Video", command=analyze_selected_video, state=tk.DISABLED) # Start disabled
+    analyze_video_btn = ttk.Button(combobox_frame, text="Analyze Selected", command=analyze_selected_video_ui, state=tk.DISABLED)
     analyze_video_btn.pack(side=tk.LEFT, padx=10)
+
+    custom_id_controls_frame = ttk.Frame(analytics_controls_frame)
+    custom_id_controls_frame.pack(side=tk.LEFT, fill='x', expand=True)
+    ttk.Label(custom_id_controls_frame, text="Or Enter Video ID:").pack(side=tk.LEFT, padx=(0,5))
+    custom_video_id_analytics_entry = ttk.Entry(custom_id_controls_frame, width=15)
+    custom_video_id_analytics_entry.pack(side=tk.LEFT, padx=5)
+    analyze_custom_id_btn = ttk.Button(custom_id_controls_frame, text="Analyze Custom ID", command=analyze_custom_video_id_ui)
+    analyze_custom_id_btn.pack(side=tk.LEFT, padx=5)
+
+
     analytics_display_frame = ttk.Frame(analytics_tab)
     analytics_display_frame.pack(pady=10, fill="both", expand=True)
     analytics_display_frame.columnconfigure(0, weight=1)
@@ -1404,6 +1553,7 @@ if __name__ == "__main__":
     # === Initialize UI and Start Background Threads ===
     refresh_scheduled_list()
     refresh_comment_template_listbox()
+    set_comment_manage_buttons_state(tk.NORMAL)
 
     log_status("Application started. Ready.")
     log_status(f"Schedule Time Format: YYYY-MM-DD HH:MM:SS (Vietnam Time)")
@@ -1413,7 +1563,7 @@ if __name__ == "__main__":
     scheduler_thread = threading.Thread(target=run_scheduler, daemon=True)
     scheduler_thread.start()
 
-    root.after(1500, check_status_queue) # Start queue checker
+    root.after(1500, check_status_queue)
 
     root.mainloop()
 
