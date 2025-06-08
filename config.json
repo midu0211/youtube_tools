@@ -1,0 +1,5 @@
+{
+    "client_secrets_file": "F:/youtube_tools/client_secret.json",
+    "theme": "arc",
+    "api_retry_attempts": 3
+}
